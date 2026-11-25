@@ -1,0 +1,28 @@
+{
+  "classes": [
+    {"name": "Drawable", "kind": "interface", "attrs": [], "methods": ["+ draw(c: Canvas): void"]},
+    {"name": "Shape", "kind": "abstract", "attrs": ["# color: String"], "methods": ["+ abstract area(): double"]},
+    {"name": "Circle", "kind": "class", "attrs": ["- r: double"], "methods": ["+ area(): double"]},
+    {"name": "Polygon", "kind": "abstract", "attrs": ["- points: List<Point>"], "methods": []},
+    {"name": "Rectangle", "kind": "class", "attrs": ["- w: double", "- h: double"], "methods": ["+ area(): double"]},
+    {"name": "Square", "kind": "class", "attrs": [], "methods": []},
+    {"name": "Triangle", "kind": "class", "attrs": [], "methods": ["+ area(): double"]},
+    {"name": "Point", "kind": "class", "attrs": ["- x: double", "- y: double"], "methods": []},
+    {"name": "Canvas", "kind": "class", "attrs": ["- shapes: List<Shape>"], "methods": ["+ render(): void"]},
+    {"name": "Group", "kind": "class", "attrs": ["- children: List<Drawable>"], "methods": ["+ draw(c: Canvas): void"]},
+    {"name": "Style", "kind": "enum", "attrs": ["SOLID", "DASHED", "DOTTED"], "methods": []}
+  ],
+  "relations": [
+    {"from": "Shape", "to": "Drawable", "type": "realize"},
+    {"from": "Group", "to": "Drawable", "type": "realize"},
+    {"from": "Circle", "to": "Shape", "type": "inherit"},
+    {"from": "Polygon", "to": "Shape", "type": "inherit"},
+    {"from": "Rectangle", "to": "Polygon", "type": "inherit"},
+    {"from": "Triangle", "to": "Polygon", "type": "inherit"},
+    {"from": "Square", "to": "Rectangle", "type": "inherit"},
+    {"from": "Polygon", "to": "Point", "type": "comp", "fromMult": "1", "toMult": "3..*"},
+    {"from": "Canvas", "to": "Shape", "type": "agg", "fromMult": "1", "toMult": "0..*"},
+    {"from": "Group", "to": "Drawable", "type": "agg", "fromMult": "0..1", "toMult": "0..*"}
+  ],
+  "notes": []
+}

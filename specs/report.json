@@ -1,0 +1,32 @@
+{
+  "classes": [
+    {"name": "QuanLyBaoCao", "kind": "class", "attrs": ["- DSBC: List<BaoCao>", "- DSHD: List<HoiDongBaoVe>", "- sc: Scanner"], "methods": ["+ themBaoCao(): void", "+ xoaBaoCao(): void", "+ suaBaoCao(): void", "+ xemDanhSach(): void", "+ sapXep(): void", "+ timKiem(): void", "+ timTheoNgay(): void", "+ ganGVHD(): void", "+ ganPhanBien(): void", "+ lapHoiDong(): void", "+ timHoiDong(): void", "+ nhapDiem(): void"]},
+    {"name": "BaoCao", "kind": "abstract", "attrs": ["- ma: String", "- name: String", "- link: String", "- ngayBaiCao: String", "- diem: double", "- dsSV: List<SinhVien>", "- gvhd: GiangVien"], "methods": []},
+    {"name": "BCTTTN", "kind": "class", "attrs": ["- danhGiaDN: String"], "methods": []},
+    {"name": "BaoCaoDaoVan", "kind": "abstract", "attrs": ["- tyLeDaoVan: double"], "methods": []},
+    {"name": "BCDAN", "kind": "class", "attrs": [], "methods": []},
+    {"name": "BCKLTN", "kind": "class", "attrs": ["- danhGiaGV: String", "- gvpb: GiangVien"], "methods": []},
+    {"name": "SinhVien", "kind": "class", "attrs": ["- MSSV: String", "- hoTen: String", "- khoaHoc: int", "- gioiTinh: String", "- namSinh: int", "- chuyenNganh: String"], "methods": []},
+    {"name": "GiangVien", "kind": "class", "attrs": ["- hoTen: String", "- hocHam: String", "- hocVi: String", "- nhiemVu: NhiemVu"], "methods": []},
+    {"name": "NhiemVu", "kind": "enum", "attrs": ["CHU_TICH", "THU_KY", "PHAN_BIEN", "UY_VIEN"], "methods": []},
+    {"name": "HoiDongBaoVe", "kind": "class", "attrs": ["- ngayLamViec: String", "- dsTV: List<GiangVien>", "- dsKL: List<BCKLTN>", "- dsDiem: List<DiemCham>"], "methods": ["+ themThanhVien(): void", "+ themKhoaLuan(): void", "+ hopLe(): boolean", "+ nhapDiem(): void", "+ tinhDiemTB(kl: BCKLTN): double"]},
+    {"name": "DiemCham", "kind": "class", "attrs": ["- diem: double", "- nhanXet: String", "- thanhVien: GiangVien", "- khoaLuan: BCKLTN"], "methods": []}
+  ],
+  "relations": [
+    {"from": "QuanLyBaoCao", "to": "BaoCao", "type": "agg", "label": "", "fromMult": "1", "toMult": "0..*"},
+    {"from": "QuanLyBaoCao", "to": "HoiDongBaoVe", "type": "agg", "label": "", "fromMult": "1", "toMult": "0..*"},
+    {"from": "BCTTTN", "to": "BaoCao", "type": "inherit"},
+    {"from": "BaoCaoDaoVan", "to": "BaoCao", "type": "inherit"},
+    {"from": "BCDAN", "to": "BaoCaoDaoVan", "type": "inherit"},
+    {"from": "BCKLTN", "to": "BaoCaoDaoVan", "type": "inherit"},
+    {"from": "BaoCao", "to": "GiangVien", "type": "directed", "label": "gvhd", "fromMult": "", "toMult": "0..1"},
+    {"from": "BaoCao", "to": "SinhVien", "type": "agg", "label": "", "fromMult": "0..*", "toMult": "1..2"},
+    {"from": "BCKLTN", "to": "GiangVien", "type": "directed", "label": "gvpb", "fromMult": "", "toMult": "0..1"},
+    {"from": "HoiDongBaoVe", "to": "GiangVien", "type": "agg", "label": "", "fromMult": "0..*", "toMult": "3..5"},
+    {"from": "HoiDongBaoVe", "to": "BCKLTN", "type": "agg", "label": "", "fromMult": "0..1", "toMult": "1..*"},
+    {"from": "HoiDongBaoVe", "to": "DiemCham", "type": "comp", "label": "", "fromMult": "1", "toMult": "0..*"},
+    {"from": "DiemCham", "to": "GiangVien", "type": "directed", "label": "", "fromMult": "", "toMult": "1"},
+    {"from": "DiemCham", "to": "BCKLTN", "type": "directed", "label": "", "fromMult": "", "toMult": "1"}
+  ],
+  "notes": []
+}

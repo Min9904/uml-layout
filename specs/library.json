@@ -1,0 +1,31 @@
+{
+  "classes": [
+    {"name": "Library", "kind": "class", "attrs": ["- name: String", "- items: List<Item>", "- members: List<Member>"], "methods": ["+ addItem(i: Item): void", "+ register(m: Member): void"]},
+    {"name": "Item", "kind": "abstract", "attrs": ["- id: String", "- title: String"], "methods": ["+ abstract loanDays(): int"]},
+    {"name": "Book", "kind": "class", "attrs": ["- isbn: String"], "methods": ["+ loanDays(): int"]},
+    {"name": "DVD", "kind": "class", "attrs": ["- minutes: int"], "methods": ["+ loanDays(): int"]},
+    {"name": "Magazine", "kind": "class", "attrs": ["- issue: int"], "methods": ["+ loanDays(): int"]},
+    {"name": "Person", "kind": "abstract", "attrs": ["- name: String", "- email: String"], "methods": []},
+    {"name": "Member", "kind": "class", "attrs": ["- cardNo: String"], "methods": ["+ borrow(i: Item): Loan"]},
+    {"name": "Librarian", "kind": "class", "attrs": ["- staffId: String"], "methods": ["+ approve(l: Loan): void"]},
+    {"name": "Loan", "kind": "class", "attrs": ["- from: LocalDate", "- to: LocalDate"], "methods": ["+ isOverdue(): boolean"]},
+    {"name": "Fine", "kind": "class", "attrs": ["- amount: double"], "methods": ["+ pay(): void"]},
+    {"name": "Payable", "kind": "interface", "attrs": [], "methods": ["+ pay(): void"]}
+  ],
+  "relations": [
+    {"from": "Library", "to": "Item", "type": "agg", "fromMult": "1", "toMult": "0..*"},
+    {"from": "Library", "to": "Member", "type": "agg", "fromMult": "1", "toMult": "0..*"},
+    {"from": "Library", "to": "Librarian", "type": "agg", "fromMult": "1", "toMult": "1..*"},
+    {"from": "Book", "to": "Item", "type": "inherit"},
+    {"from": "DVD", "to": "Item", "type": "inherit"},
+    {"from": "Magazine", "to": "Item", "type": "inherit"},
+    {"from": "Member", "to": "Person", "type": "inherit"},
+    {"from": "Librarian", "to": "Person", "type": "inherit"},
+    {"from": "Member", "to": "Loan", "type": "assoc", "fromMult": "1", "toMult": "0..*"},
+    {"from": "Loan", "to": "Item", "type": "directed", "fromMult": "0..*", "toMult": "1"},
+    {"from": "Loan", "to": "Fine", "type": "comp", "fromMult": "1", "toMult": "0..1"},
+    {"from": "Fine", "to": "Payable", "type": "realize"},
+    {"from": "Librarian", "to": "Loan", "type": "depend"}
+  ],
+  "notes": []
+}

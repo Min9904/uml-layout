@@ -1,0 +1,12 @@
+const fs=require('fs'),path=require('path');
+const {Resvg}=require('@resvg/resvg-js');
+const E=require('./engine.js');
+const [,,specF,outF,layF]=process.argv;
+const d=E.fromSpec(JSON.parse(fs.readFileSync(specF,'utf8')));
+E.setS(d);
+const tidy=layF?require(path.resolve(layF)).tidy:E.tidy;
+const t0=process.hrtime.bigint();tidy();const ms=Number(process.hrtime.bigint()-t0)/1e6;
+const svg=E.exportSVG(E.DARK);
+const png=new Resvg(svg,{font:{loadSystemFonts:true,defaultFontFamily:'DejaVu Sans'},fitTo:{mode:'width',value:Math.min(2400,Math.max(1400,0))||1600}}).render().asPng();
+fs.writeFileSync(outF,png);
+console.log(JSON.stringify({spec:path.basename(specF),layout:layF||'original',ms:Math.round(ms),...E.metrics()}));
