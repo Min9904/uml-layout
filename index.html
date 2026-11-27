@@ -262,7 +262,7 @@ function mid(pts){const seg=[];let tot=0;for(let i=1;i<pts.length;i++){const l=M
 let h=tot/2;for(let i=1;i<pts.length;i++){const l=seg[i-1];if(h<=l&&l>0){const a=pts[i-1],b=pts[i],t=h/l;return{x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,hz:eq(a.y,b.y)};}h-=l;}return{x:pts[0].x,y:pts[0].y,hz:true};}
 
 const GXL=110,GXN=160,GXG=200,GXR=260,GYL=130;
-function tidy(){
+function tidyCore(){
 const sh=S.shapes;if(!sh.length)return;
 const ids=sh.map(s=>s.id),W=id=>lay(byId(id)).w,H=id=>lay(byId(id)).h;
 const isNote=id=>byId(id).kind==='note';
@@ -286,7 +286,7 @@ for(const n of ids){if(tp.has(n))continue;const c=partUp.get(n).slice().sort((a,
 for(const n of ids){if(tp.has(n)||isoSet.has(n))continue;if(genUp.get(n).length&&!partUp.get(n).length&&!soft.get(n).length&&genUp.get(n).every(lone))continue;
 const c=soft.get(n).filter(x=>!isNote(x)||isNote(n)).sort((a,b)=>deg.get(b)-deg.get(a));for(const p of c)if(setP(n,p,isNote(n)?3:2))break;}
 for(const n of ids)for(const p of genUp.get(n)){if(!lone(p)||tp.has(p)&&tp.get(p)!==n)continue;
-if(tp.has(n)){if(!tp.has(p))setP(p,n,0,true);}else setP(n,p,0);}
+if(tp.has(n)){if(!tp.has(p)){const q=tp.get(n);/* a second parent sits beside the first, both above the child */if(!(genUp.get(n).includes(q)&&setP(p,q,0,true)))setP(p,n,0,true);}}else setP(n,p,0);}
 for(const n of iso){const re=new RegExp('\\b'+byId(n).name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b');
 const h=ids.find(o=>o!==n&&!isNote(o)&&re.test(byId(o).attrs));if(!(h&&setP(n,h,2)))bottom.push(n);}
 const roots=ids.filter(i=>!tp.has(i)&&!bottom.includes(i));
@@ -314,21 +314,23 @@ G.set(n,g.map((ids_,k)=>({k,ids:ids_})).filter(x=>x.ids.length));SAT.set(n,sa);s
 G.set('#',[{k:-1,ids:roots.slice()}]);SAT.set('#',[]);satL.set('#',false);
 const mainK=n=>{const g=G.get(n);return g.length?Math.min(...g.map(x=>x.k)):0;};
 let rootLeft=false;const ext=new Map(),off=new Map(),leaf=n=>!kids.get(n).length;
-function pack(n){const v=n==='#',w=v?0:W(n);const gs=G.get(n);let l=-w/2,r=w/2;
-if(!gs.length&&!SAT.get(n).length){ext.set(n,[l,r]);return;}
-let cur=0,prev=null,pg=-1,A=Infinity,B=-Infinity;const pos=new Map(),mk=mainK(n);
-gs.forEach((g,gi)=>{for(const c of g.ids){pack(c);const [cl,cr]=ext.get(c);
-if(prev!==null)cur+=v?GXR:gi!==pg?GXG:(leaf(prev)&&leaf(c)?GXL:GXN);
-const x=cur-cl;pos.set(c,x);cur=x+cr;prev=c;pg=gi;if(g.k===mk){A=Math.min(A,x);B=Math.max(B,x);}}});
-let mid=gs.length?(A+B)/2:0;if(rootLeft&&!v&&!tp.has(n)&&gs.length){const f=gs[0].ids[0];mid=pos.get(f)+ext.get(f)[0]+w/2;}
-for(const [c,x] of pos){const o=x-mid;off.set(c,o);const [cl,cr]=ext.get(c);l=Math.min(l,cl+o);r=Math.max(r,cr+o);}
-let lo=l,hi=r;const own=[-w/2,w/2];
-for(const s of SAT.get(n)){pack(s);const [sl,sr]=ext.get(s);if(satL.get(n)){const o=lo-GXL-sr;off.set(s,o);lo=o+sl;}else{const o=Math.max(hi,own[1])+GXL-sl;off.set(s,o);hi=o+sr;}
-l=Math.min(l,lo);r=Math.max(r,hi);}
-ext.set(n,[l,r]);}
+const cMerge=(A,B,dx)=>{for(const [k,[l,r]] of B){const a=A.get(k);A.set(k,a?[Math.min(a[0],l+dx),Math.max(a[1],r+dx)]:[l+dx,r+dx]);}};
+const cSpan=C=>{let l=Infinity,r=-Infinity;for(const [a,b] of C.values()){l=Math.min(l,a);r=Math.max(r,b);}return l>r?[0,0]:[l,r];};
+/* contours: each subtree keeps a left/right extent per row, so a box only has to clear what is in its own row */
+const cRight=(A,B,gap)=>{let o=-Infinity;for(const [k,[l]] of B){const a=A.get(k);if(a)o=Math.max(o,a[1]+gap-l);}return o===-Infinity?cSpan(A)[1]+gap-cSpan(B)[0]:o;};
+const cLeft=(A,B,gap)=>{let o=Infinity;for(const [k,[,r]] of B){const a=A.get(k);if(a)o=Math.min(o,a[0]-gap-r);}return o===Infinity?cSpan(A)[0]-gap-cSpan(B)[1]:o;};
+function pack(n){const v=n==='#',w=v?0:W(n),gs=G.get(n),acc=new Map(),pos=new Map(),mk=mainK(n);let prev=null,pg=-1,A=Infinity,B=-Infinity;
+gs.forEach((g,gi)=>{for(const c of g.ids){pack(c);const C=ext.get(c);let x=0;
+if(prev!==null){const gap=v?GXR:gi!==pg?GXG:(leaf(prev)&&leaf(c)?GXL:GXN);x=v?cSpan(acc)[1]+gap-cSpan(C)[0]:cRight(acc,C,gap);}
+pos.set(c,x);cMerge(acc,C,x);prev=c;pg=gi;if(g.k===mk){A=Math.min(A,x);B=Math.max(B,x);}}});
+let mid=pos.size?(A+B)/2:0;if(rootLeft&&!v&&!tp.has(n)&&pos.size){const f=gs[0].ids[0];mid=pos.get(f)+cSpan(ext.get(f))[0]+w/2;}
+const F=new Map();for(const [c,x] of pos)off.set(c,x-mid);cMerge(F,acc,-mid);
+if(!v)cMerge(F,new Map([[L.get(n),[-w/2,w/2]]]),0);
+for(const s of SAT.get(n)){pack(s);const C=ext.get(s),o=satL.get(s)?cLeft(F,C,GXL):cRight(F,C,GXL);off.set(s,o);cMerge(F,C,o);}
+ext.set(n,F);}
 const X=new Map();
 function absX(){pack('#');const go=(n,x)=>{X.set(n,x);for(const c of G.get(n).flatMap(g=>g.ids).concat(SAT.get(n)))go(c,x+off.get(c));};
-const [l,r]=ext.get('#');for(const c of roots)go(c,off.get(c)-(l+r)/2);
+const [l,r]=cSpan(ext.get('#'));for(const c of G.get('#')[0].ids)go(c,off.get(c)-(l+r)/2);
 if(bottom.length){let tot=bottom.reduce((a,i)=>a+W(i),0)+GXL*(bottom.length-1),x=-tot/2;for(const i of bottom){X.set(i,x+W(i)/2);x+=W(i)+GXL;}}}
 const treeE=e=>tp.get(e.from.id)===e.to.id||tp.get(e.to.id)===e.from.id;
 const isL=(e,ra,rb)=>{if(GEN.has(e.type)||treeE(e))return false;const o=Math.min(ra.x+ra.w,rb.x+rb.w)-Math.max(ra.x,rb.x);return o<30;};
@@ -363,19 +365,35 @@ for(const n of ['#',...ids]){if(out())break;const gs=G.get(n);
 if(gs.length>1){const orig=gs.slice();let bp=orig;for(const p of perms(orig)){G.set(n,p);const c=cost();if(c<best-.01){best=c;bp=p;imp=true;}}G.set(n,bp);}
 for(const g of G.get(n)){if(g.ids.length<2)continue;
 for(let i=0;i<g.ids.length;i++){const base=g.ids.slice();let bi=base,bc=best;for(let j=0;j<base.length;j++){const t=base.slice(),[m]=t.splice(i,1);t.splice(j,0,m);g.ids=t;const c=cost();if(c<bc-.01){bc=c;bi=t;}}g.ids=bi;if(bc<best-.01){best=bc;imp=true;}}}
-if(SAT.get(n).length){satL.set(n,!satL.get(n));const c=cost();if(c<best-.01){best=c;imp=true;}else satL.set(n,!satL.get(n));}}
+for(const q of SAT.get(n)){satL.set(q,!satL.get(q));const c=cost();if(c<best-.01){best=c;imp=true;}else satL.set(q,!satL.get(q));}}
 if(!imp)break;}
 return best;};
 const sub=n=>[n,...kids.get(n).flatMap(sub)];
-const okc=()=>{for(const n of ids){if(bottom.includes(n))continue;if(tp.has(n)){const d=L.get(n)-L.get(tp.get(n));if(sat.has(n)?d!==0:d<1)return false;}for(const q of preds.get(n))if(L.get(q)>=L.get(n))return false;}return true;};
-const layerSearch=()=>{let cur=cost();const leafs=ids.filter(n=>!bottom.includes(n)&&!sat.has(n)&&grp.get(n)>=1&&!kids.get(n).length);
+/* a whole above its part (and a parent above its child) cannot always hold: links can form a cycle.
+   So the tree rules are hard, and the above-rules only must not get worse than in the state a move starts from */
+const vPred=()=>{let k=0;for(const n of ids){if(bottom.includes(n))continue;for(const q of preds.get(n))if(!(sat.has(n)&&q===tp.get(n))&&!(sat.has(q)&&tp.get(q)===n)&&L.get(q)>=L.get(n))k++;}return k;};
+const okTree=()=>{for(const n of ids){if(bottom.includes(n)||!tp.has(n))continue;const d=L.get(n)-L.get(tp.get(n));if(sat.has(n)?d!==0:d<1)return false;}return true;};
+let BV=Infinity;
+const okc=()=>okTree()&&vPred()<=BV;
+const layerSearch=()=>{let cur=cost();BV=vPred();const leafs=ids.filter(n=>!bottom.includes(n)&&!sat.has(n)&&grp.get(n)>=1&&!kids.get(n).length);
 for(let it=0;it<3;it++){let imp=false;
-for(const n of leafs){if(out())break;L.set(n,L.get(n)+1);if(okc()){const c=cost();if(c<cur-150){cur=c;imp=true;continue;}}L.set(n,L.get(n)-1);}
+for(const n of leafs){if(out())break;L.set(n,L.get(n)+1);if(okc()){const c=cost();if(c<cur-150){cur=c;imp=true;BV=vPred();continue;}}L.set(n,L.get(n)-1);}
 if(!imp)break;}return cur;};
 orderSearch();layerSearch();{const u=[...new Set(ids.filter(i=>!bottom.includes(i)).map(i=>L.get(i)))].sort((a,b)=>a-b);for(const i of ids)if(!bottom.includes(i))L.set(i,u.indexOf(L.get(i)));}orderSearch();
 const pMode=new Map(),yOff=new Map(),pIdx=new Map();
 function write(){cost();
-for(const n of ids){const s=byId(n);s.x=Math.round(X.get(n)-W(n)/2);s.y=Math.round(rowY[L.get(n)]+(yOff.get(n)||0));}
+/* rows are not one fixed band: each family (siblings, or a box and the boxes beside it) drops only as far as the boxes above it need */
+const Y=new Map(),done=[],lys=[...new Set(ids.map(i=>L.get(i)))].sort((a,b)=>a-b);let prevTop=-Infinity;
+for(const r of lys){const row=ids.filter(i=>L.get(i)===r),pa=new Map(row.map(i=>[i,i])),f=x=>pa.get(x)===x?x:f(pa.get(x)),u=(a,b)=>{a=f(a);b=f(b);if(a!==b)pa.set(a,b);};
+const byP=new Map();for(const i of row){if(bottom.includes(i)){u(i,row.find(x=>bottom.includes(x)));continue;}
+if(sat.has(i)&&row.includes(tp.get(i)))u(i,tp.get(i));else if(tp.has(i)){const k=tp.get(i);if(byP.has(k))u(i,byP.get(k));else byP.set(k,i);}}
+const cl=new Map();for(const i of row){const k=f(i);if(!cl.has(k))cl.set(k,[]);cl.get(k).push(i);}
+let top=Infinity;
+for(const m of cl.values()){const x0=Math.min(...m.map(i=>X.get(i)-W(i)/2))-40,x1=Math.max(...m.map(i=>X.get(i)+W(i)/2))+40;
+let y=done.length?prevTop+60:0;for(const d of done)if(d.x<x1&&d.x+d.w>x0)y=Math.max(y,d.y+d.h+GYL);
+for(const i of m)Y.set(i,y);top=Math.min(top,y);}
+for(const i of row)done.push({x:X.get(i)-W(i)/2,w:W(i),y:Y.get(i),h:H(i)});prevTop=top;}
+for(const n of ids){const s=byId(n);s.x=Math.round(X.get(n)-W(n)/2);s.y=Math.round(Y.get(n)+(yOff.get(n)||0));}
 const rowOf=new Map(ids.map(i=>[i,L.get(i)]));
 const C=id=>{const s=byId(id),l=lay(s);return{x:s.x+l.w/2,y:s.y+l.h/2};},slots=new Map();
 const push=(id,side,it)=>{const k=id+'|'+side;if(!slots.has(k))slots.set(k,[]);slots.get(k).push(it);};
@@ -404,27 +422,46 @@ for(let i=0;i<sg.length;i++)for(let j=i+1;j<sg.length;j++){const u=sg[i],v=sg[j]
 if(u.h!==v.h){const H=u.h?u:v,V=u.h?v:u,y=H.a.y,x=V.a.x;if(x>Math.min(H.a.x,H.b.x)+.5&&x<Math.max(H.a.x,H.b.x)-.5&&y>Math.min(V.a.y,V.b.y)+.5&&y<Math.max(V.a.y,V.b.y)-.5)c+=6000;}
 else if(u.h?Math.abs(u.a.y-v.a.y)<10:Math.abs(u.a.x-v.a.x)<10){const k=u.h?'x':'y',o=Math.min(Math.max(u.a[k],u.b[k]),Math.max(v.a[k],v.b[k]))-Math.max(Math.min(u.a[k],u.b[k]),Math.min(v.a[k],v.b[k]));if(o>1&&!(GEN.has(u.e.type)&&GEN.has(v.e.type)))c+=200+o;}}
 return c;}
-const snap=()=>({L:new Map(L),G:new Map([...G].map(([k,v])=>[k,v.map(g=>({k:g.k,ids:g.ids.slice()}))])),SAT:new Map([...SAT].map(([k,v])=>[k,v.slice()])),sat:new Set(sat),satL:new Map(satL),rl:rootLeft,pm:new Map(pMode),yo:new Map(yOff),pi:new Map(pIdx),tp:new Map(tp),grp:new Map(grp),kids:new Map([...kids].map(([k,v])=>[k,v.slice()]))});
+const snap=()=>(BV=vPred(),{L:new Map(L),G:new Map([...G].map(([k,v])=>[k,v.map(g=>({k:g.k,ids:g.ids.slice()}))])),SAT:new Map([...SAT].map(([k,v])=>[k,v.slice()])),sat:new Set(sat),satL:new Map(satL),rl:rootLeft,pm:new Map(pMode),yo:new Map(yOff),pi:new Map(pIdx),tp:new Map(tp),grp:new Map(grp),kids:new Map([...kids].map(([k,v])=>[k,v.slice()]))});
 const load=z=>{for(const [k,v] of z.L)L.set(k,v);G.clear();for(const [k,v] of z.G)G.set(k,v.map(g=>({k:g.k,ids:g.ids.slice()})));SAT.clear();for(const [k,v] of z.SAT)SAT.set(k,v.slice());sat.clear();z.sat.forEach(x=>sat.add(x));for(const [k,v] of z.satL)satL.set(k,v);rootLeft=z.rl;pMode.clear();for(const [k,v] of z.pm)pMode.set(k,v);yOff.clear();for(const [k,v] of z.yo)yOff.set(k,v);pIdx.clear();for(const [k,v] of z.pi)pIdx.set(k,v);tp.clear();for(const [k,v] of z.tp)tp.set(k,v);for(const [k,v] of z.grp)grp.set(k,v);for(const [k,v] of z.kids)kids.set(k,v.slice());};
 const squash=()=>{const u=[...new Set(ids.filter(i=>!bottom.includes(i)).map(i=>L.get(i)))].sort((a,b)=>a-b);for(const i of ids)if(!bottom.includes(i))L.set(i,u.indexOf(L.get(i)));};
-const okL=()=>{for(const n of ids){if(bottom.includes(n))continue;if(tp.has(n)){const d=L.get(n)-L.get(tp.get(n));if(sat.has(n)?d!==0:d<1)return false;}for(const q of preds.get(n))if(!(sat.has(n)&&q===tp.get(n))&&L.get(q)>=L.get(n))return false;}return true;};
+const okL=()=>okTree()&&vPred()<=BV;
 const moves=[],fine=[];
+/* subclasses of one parent always share a row */
+const genKid=n=>tp.has(n)&&ed.some(e=>GEN.has(e.type)&&e.from.id===n&&e.to.id===tp.get(n));
 for(const n of ids){if(bottom.includes(n)||!tp.has(n)||!leaf(n))continue;
-moves.push(()=>{if(sat.has(n))return false;L.set(n,L.get(n)+1);return okL();});
-moves.push(()=>{if(sat.has(n))return false;L.set(n,L.get(n)-1);if(!okL())return false;squash();return true;});
+moves.push(()=>{if(sat.has(n)||genKid(n))return false;L.set(n,L.get(n)+1);return okL();});
+moves.push(()=>{if(sat.has(n)||genKid(n))return false;L.set(n,L.get(n)-1);if(!okL())return false;squash();return true;});
 if(!GEN.has((ed.find(e=>e.from.id===n&&e.to.id===tp.get(n)||e.to.id===n&&e.from.id===tp.get(n))||{}).type)){const p=tp.get(n);
 moves.push(()=>{if(sat.has(n)){sat.delete(n);SAT.set(p,SAT.get(p).filter(x=>x!==n));let g=G.get(p).find(x=>x.k===grp.get(n));if(!g){g={k:grp.get(n),ids:[]};G.get(p).push(g);G.get(p).sort((a,b)=>a.k-b.k);}g.ids.push(n);L.set(n,L.get(p)+1);}
 else{sat.add(n);for(const g of G.get(p))g.ids=g.ids.filter(x=>x!==n);G.set(p,G.get(p).filter(g=>g.ids.length));SAT.get(p).push(n);L.set(n,L.get(p));}
 if(!okL())return false;squash();return true;});}}
-for(const n of ids)if(!bottom.includes(n))fine.push(()=>{yOff.set(n,yOff.get(n)?0:Math.round(GYL*.35));return true;});
+for(const n of ids)if(!bottom.includes(n))fine.push(()=>{if(genKid(n)&&!yOff.get(n))return false;yOff.set(n,yOff.get(n)?0:Math.round(GYL*.35));return true;});
 for(const e of S.edges)if(!GEN.has(e.type)&&e.from.id!==e.to.id)for(const end of ['from','to'])for(const v of [0,1,2])fine.push(()=>{const k=e.id+'|'+end;if(pIdx.get(k)===v)return false;pIdx.set(k,v);return true;});
 for(const n of ids){if(bottom.includes(n)||!tp.has(n)||!leaf(n)||genUp.get(n).length)continue;
-const nb=[...new Set(ed.filter(e=>e.from.id===n||e.to.id===n).map(e=>e.from.id===n?e.to.id:e.from.id))].filter(x=>!isNote(x)&&!bottom.includes(x));
+const nb=[...new Set(ed.filter(e=>(e.from.id===n||e.to.id===n)&&!GEN.has(e.type)).map(e=>e.from.id===n?e.to.id:e.from.id))].filter(x=>!isNote(x)&&!bottom.includes(x));
 for(const q of nb)moves.push(()=>{const p=tp.get(n);if(q===p||sat.has(n)||anc(n,q))return false;
 for(const g of G.get(p))g.ids=g.ids.filter(x=>x!==n);G.set(p,G.get(p).filter(g=>g.ids.length));kids.set(p,kids.get(p).filter(x=>x!==n));
 tp.set(n,q);grp.set(n,2);kids.get(q).push(n);let g=G.get(q).find(x=>x.k===2);if(!g){g={k:2,ids:[]};G.get(q).push(g);G.get(q).sort((a,b)=>a.k-b.k);}g.ids.push(n);
 L.set(n,Math.max(L.get(n),L.get(q)+1));if(!okL())return false;squash();return true;});}
-for(const n of ids)moves.push(()=>{if(!SAT.get(n).length)return false;satL.set(n,!satL.get(n));return true;});
+for(const n of ids)moves.push(()=>{if(!sat.has(n))return false;satL.set(n,!satL.get(n));return true;});
+const tType=(a,b)=>(ed.find(e=>e.from.id===a&&e.to.id===b||e.to.id===a&&e.from.id===b)||{}).type;
+const detach=n=>{const p=tp.get(n);if(p===undefined)return;for(const g of G.get(p))g.ids=g.ids.filter(x=>x!==n);G.set(p,G.get(p).filter(g=>g.ids.length));SAT.set(p,SAT.get(p).filter(x=>x!==n));kids.set(p,kids.get(p).filter(x=>x!==n));sat.delete(n);};
+/* rotate: a child takes its parent's slot and the parent moves beside it in the same row (hub layouts) */
+for(const n of ids){if(bottom.includes(n))continue;
+moves.push(()=>{const p=tp.get(n);if(p===undefined||sat.has(n)||GEN.has(tType(n,p)))return false;const pp=tp.get(p),lp=L.get(p),left=(X.get(p)||0)<(X.get(n)||0);
+detach(n);
+if(pp===undefined){const r=G.get('#')[0].ids;r[r.indexOf(p)]=n;tp.delete(n);}
+else{kids.set(pp,kids.get(pp).map(x=>x===p?n:x));tp.set(n,pp);grp.set(n,grp.get(p));
+if(sat.has(p)){sat.delete(p);sat.add(n);SAT.set(pp,SAT.get(pp).map(x=>x===p?n:x));satL.set(n,satL.get(p));}else for(const g of G.get(pp))g.ids=g.ids.map(x=>x===p?n:x);}
+{const d=lp-L.get(n);for(const x of sub(n))L.set(x,L.get(x)+d);}
+tp.set(p,n);grp.set(p,2);sat.add(p);SAT.get(n).push(p);kids.get(n).push(p);satL.set(p,left);L.set(p,lp);
+if(!okL())return false;squash();return true;});}
+/* a loosely linked leaf can sit beside any box it is linked to */
+for(const n of ids){if(bottom.includes(n)||!tp.has(n)||!leaf(n)||genUp.get(n).length)continue;
+const nb=[...new Set(ed.filter(e=>(e.from.id===n||e.to.id===n)&&!GEN.has(e.type)).map(e=>e.from.id===n?e.to.id:e.from.id))].filter(x=>!bottom.includes(x));
+for(const q of nb)moves.push(()=>{if(tp.get(n)===q&&sat.has(n)||anc(n,q))return false;const left=(X.get(n)||0)<(X.get(q)||0);detach(n);
+tp.set(n,q);grp.set(n,2);kids.get(q).push(n);sat.add(n);SAT.get(q).push(n);satL.set(n,left);L.set(n,L.get(q));if(!okL())return false;squash();return true;});}
 for(const n of ['#',...ids])moves.push(()=>{let ch=false;for(const g of G.get(n))if(g.ids.length>1){g.ids.push(g.ids.shift());ch=true;}return ch;},()=>{let ch=false;for(const g of G.get(n))if(g.ids.length>1){g.ids.unshift(g.ids.pop());ch=true;}return ch;},()=>{if(G.get(n).length<2)return false;G.get(n).reverse();return true;});
 for(const e of ed)if(!GEN.has(e.type))fine.push(()=>{if(L.get(e.from.id)===L.get(e.to.id)||treeE(e))return false;pMode.set(e.id,((pMode.get(e.id)||0)+1)%3);return true;},()=>{if(L.get(e.from.id)===L.get(e.to.id)||treeE(e))return false;pMode.set(e.id,((pMode.get(e.id)||0)+2)%3);return true;});
 if(roots.some(r=>G.get(r).length))moves.push(()=>{rootLeft=!rootLeft;return true;});
@@ -439,75 +476,42 @@ cap=nEv+180;climb(fine);
 load(bz);write();}
 }
 
-/* previous layout, unused: delete when convenient */
-function tidyOld(){
-const sh=S.shapes;if(!sh.length)return;
-const par=new Map(sh.map(s=>[s.id,[]])),nb=new Map(sh.map(s=>[s.id,new Set()])),inGen=new Set();
-for(const e of S.edges){const a=e.from.id,b=e.to.id;if(a===b||!nb.has(a)||!nb.has(b))continue;nb.get(a).add(b);nb.get(b).add(a);if(GEN.has(e.type)){par.get(a).push(b);inGen.add(a);inGen.add(b);}}
-const layer=new Map(),vis=new Set();
-const depth=id=>{if(layer.has(id))return layer.get(id);if(vis.has(id))return 0;vis.add(id);let d=0;for(const p of par.get(id))d=Math.max(d,depth(p)+1);layer.set(id,d);return d;};
-inGen.forEach(depth);
-/* wholes sit one row above their aggregated/composed parts; other links share a row */
-const adj=new Map(sh.map(s=>[s.id,[]]));
-for(const e of S.edges){const a=e.from.id,b=e.to.id;if(a===b||!adj.has(a)||!adj.has(b))continue;const d=(e.type==='agg'||e.type==='comp')?1:0;adj.get(a).push([b,d]);adj.get(b).push([a,-d]);}
-const spread=q=>{while(q.length){const id=q.shift();for(const [n,d] of adj.get(id))if(!layer.has(n)){layer.set(n,layer.get(id)+d);q.push(n);}}};
-spread([...layer.keys()]);
-for(const s of sh)if(!layer.has(s.id)){layer.set(s.id,0);spread([s.id]);}
-const minL=Math.min(...layer.values());for(const [k,v] of layer)layer.set(k,v-minL);
-/* boxes with no lines at all (e.g. an enum used only as a field type) go in a row at the bottom */
-const iso=sh.filter(s=>nb.get(s.id).size===0);if(iso.length&&iso.length<sh.length){const mx=Math.max(...sh.filter(s=>nb.get(s.id).size).map(s=>layer.get(s.id)));iso.forEach(s=>layer.set(s.id,mx+1));}
-const rows=[];for(const s of sh){const l=layer.get(s.id);(rows[l]||(rows[l]=[])).push(s.id);}
-const R=rows.filter(Boolean),X=new Map(),W=id=>lay(byId(id)).w,rowI=new Map();
-R.forEach((r,i)=>r.forEach(id=>rowI.set(id,i)));
-const place=r=>{const tot=r.reduce((a,id)=>a+W(id),0)+GAPX*(r.length-1);let x=-tot/2;for(const id of r){X.set(id,x+W(id)/2);x+=W(id)+GAPX;}};
-R.forEach(place);
-const E=[];for(const e of S.edges){const a=e.from.id,b=e.to.id;if(a!==b&&rowI.has(a)&&rowI.has(b))E.push([a,b]);}
-/* cost: total line length, plus a heavy charge for every box a same-row line would have to jump */
-const GE=new Set();for(const e of S.edges)if(GEN.has(e.type))GE.add(e.from.id+'>'+e.to.id);
-const cost=()=>{let c=0;for(const [a,b] of E){const dx=Math.abs(X.get(a)-X.get(b)),w=GE.has(a+'>'+b)?2:1;if(rowI.get(a)===rowI.get(b)){const r=R[rowI.get(a)];c+=dx+(Math.abs(r.indexOf(a)-r.indexOf(b))-1)*400;}else c+=dx*w;}return c;};
-const perms=a=>{if(a.length<=1)return[a];const o=[];a.forEach((x,i)=>{for(const p of perms(a.slice(0,i).concat(a.slice(i+1))))o.push([x,...p]);});return o;};
-for(let pass=0;pass<3;pass++)for(let ri=0;ri<R.length;ri++){let r=R[ri];if(r.length<2)continue;
-if(r.length<=7){let best=r,bc=Infinity;for(const p of perms(r.slice())){R[ri]=p;place(p);const c=cost();if(c<bc-.01){bc=c;best=p;}}R[ri]=best;place(best);}
-else{/* big row: start from barycentres, then move single boxes while that lowers the cost */
-const bcx=new Map(r.map(id=>{const ns=[...nb.get(id)];return[id,ns.length?ns.reduce((a,n)=>a+X.get(n),0)/ns.length:X.get(id)];}));r=r.slice().sort((a,b)=>bcx.get(a)-bcx.get(b));R[ri]=r;place(r);
-let c0=cost();for(let g=0,imp=true;imp&&g<8;g++){imp=false;for(let i=0;i<r.length;i++)for(let j=0;j<r.length;j++){if(i===j)continue;const t=r.slice(),[m]=t.splice(i,1);t.splice(j,0,m);R[ri]=t;place(t);const c=cost();if(c<c0-.01){c0=c;r=t;imp=true;}else{R[ri]=r;place(r);}}}}}
-/* wrap long rows into balanced sub-rows (no 5+1 leftovers) */
-const fin=[];for(const r of R){const k=Math.ceil(r.length/MAXROW),sz=Math.ceil(r.length/k);for(let i=0;i<r.length;i+=sz)fin.push(r.slice(i,i+sz));}
-/* positions: keep each row's order, but slide boxes toward what they connect to in other rows
-   (parents end up centred over their children, so most vertical lines run straight) */
-const nbw=new Map(sh.map(s=>[s.id,[]]));
-for(const e of S.edges){const a=e.from.id,b=e.to.id;if(a===b||!nbw.has(a)||!nbw.has(b))continue;const w=GEN.has(e.type)?3:1;nbw.get(a).push([b,w]);nbw.get(b).push([a,w]);}
-const fr=new Map();fin.forEach((r,i)=>{r.forEach(id=>fr.set(id,i));place(r);});
-for(let it=0;it<14;it++){const ord=fin.map((_,i)=>i);if(it%2)ord.reverse();
-for(const ri of ord){const r=fin[ri],hw=r.map(id=>W(id)/2);
-const d=r.map(id=>{let s=X.get(id)*.6,t=.6;for(const [n,w] of nbw.get(id)){s+=X.get(n)*w;t+=w;}return s/t;});
-const f=d.slice();for(let i=1;i<r.length;i++)f[i]=Math.max(f[i],f[i-1]+hw[i-1]+hw[i]+GAPX);
-const bk=d.slice();for(let i=r.length-2;i>=0;i--)bk[i]=Math.min(bk[i],bk[i+1]-hw[i+1]-hw[i]-GAPX);
-const m=d.map((_,i)=>(f[i]+bk[i])/2);for(let i=1;i<r.length;i++)m[i]=Math.max(m[i],m[i-1]+hw[i-1]+hw[i]+GAPX);
-r.forEach((id,i)=>X.set(id,m[i]));}}
-/* keep the picture compact: no wider than about 1.2x the widest packed row */
-const span=r=>r.reduce((a,id)=>a+W(id),0)+GAPX*(r.length-1),cap=Math.max(...fin.map(span))*1.2;
-const ext=()=>{let lo=Infinity,hi=-Infinity;for(const r of fin)for(const id of r){lo=Math.min(lo,X.get(id)-W(id)/2);hi=Math.max(hi,X.get(id)+W(id)/2);}return[lo,hi];};
-let [lo,hi]=ext();
-if(hi-lo>cap){const k=cap/(hi-lo),c=(lo+hi)/2;for(const r of fin){for(const id of r)X.set(id,c+(X.get(id)-c)*k);
-for(let i=1;i<r.length;i++){const need=X.get(r[i-1])+W(r[i-1])/2+W(r[i])/2+GAPX;if(X.get(r[i])<need)X.set(r[i],need);}}}
-let y=0;const rowOf=new Map();
-fin.forEach((r,ri)=>{let mh=0;
-for(const id of r){const s=byId(id);s.x=snap(X.get(id)-W(id)/2);s.y=snap(y);mh=Math.max(mh,lay(s).h);rowOf.set(id,ri);}y+=mh+GAPY;});
-const C=id=>{const s=byId(id),l=lay(s);return{x:s.x+l.w/2,y:s.y+l.h/2};},slots=new Map();
-const push=(id,side,it)=>{const k=id+'|'+side;if(!slots.has(k))slots.set(k,[]);slots.get(k).push(it);};
-for(const e of S.edges){const a=e.from.id,b=e.to.id;if(!rowOf.has(a)||!rowOf.has(b))continue;
-if(a===b){e.from={id:a,side:1,i:0};e.to={id:a,side:0,i:2};continue;}
-const ra=rowOf.get(a),rb=rowOf.get(b),ca=C(a),cb=C(b);let sa,sb;
-if(ra!==rb){if(rb<ra){sa=0;sb=2;}else{sa=2;sb=0;}}else if(cb.x>=ca.x){sa=1;sb=3;}else{sa=3;sb=1;}
-e.from={id:a,side:sa,i:1};e.to={id:b,side:sb,i:1};
-push(a,sa,{e,end:'from',o:sa%2===0?cb.x:cb.y,tree:false});
-push(b,sb,{e,end:'to',o:sb%2===0?ca.x:ca.y,tree:GEN.has(e.type)&&sb===2});}
-for(const [k,list] of slots){const p=k.split('|'),side=+p[1],c=C(p[0]),md=side%2===0?c.x:c.y;
-const tree=list.filter(t=>t.tree),rest=list.filter(t=>!t.tree).sort((u,v)=>u.o-v.o);
-if(tree.length){tree.forEach(t=>{t.e[t.end].i=1;});rest.forEach(t=>{t.e[t.end].i=t.o<md?0:2;});}
-else{const n=rest.length;rest.forEach((t,j)=>{t.e[t.end].i=n===1?1:n===2?(j===0?0:2):Math.min(2,Math.floor(j*3/n));});}}
-}
+/* notes stay out of the tree: lay out the classes, then park each note beside the box it describes */
+function tidy(){
+const isN=s=>KINDS[s.kind].note,nIds=new Set(S.shapes.filter(isN).map(s=>s.id));
+const allS=S.shapes,allE=S.edges,touch=e=>nIds.has(e.from.id)||nIds.has(e.to.id);
+S.shapes=allS.filter(s=>!nIds.has(s.id));S.edges=allE.filter(e=>!touch(e));
+let RT=new Map();try{if(S.shapes.length){tidyCore();RT=routeAll(null);}}finally{S.shapes=allS;S.edges=allE;}
+if(nIds.size)placeNotes(nIds,RT);}
+function placeNotes(nIds,RT){
+const box=s=>{const l=lay(s);return{x:s.x,y:s.y,w:l.w,h:l.h};};
+const obs=S.shapes.filter(s=>!nIds.has(s.id)).map(box),segs=[];
+for(const g of RT.values())for(let i=1;i<g.pts.length;i++)segs.push([g.pts[i-1],g.pts[i]]);
+const over=(a,b,m)=>a.x<b.x+b.w+m&&b.x<a.x+a.w+m&&a.y<b.y+b.h+m&&b.y<a.y+a.h+m;
+const segIn=(a,b,r,m)=>Math.max(a.x,b.x)>r.x-m&&Math.min(a.x,b.x)<r.x+r.w+m&&Math.max(a.y,b.y)>r.y-m&&Math.min(a.y,b.y)<r.y+r.h+m;
+const cross=(a,b,c,d)=>{const h1=eq(a.y,b.y),h2=eq(c.y,d.y);if(h1===h2)return false;const H=h1?[a,b]:[c,d],V=h1?[c,d]:[a,b];
+return V[0].x>Math.min(H[0].x,H[1].x)&&V[0].x<Math.max(H[0].x,H[1].x)&&H[0].y>Math.min(V[0].y,V[1].y)&&H[0].y<Math.max(V[0].y,V[1].y);};
+const loose=[];
+for(const s of S.shapes){if(!nIds.has(s.id))continue;
+const e=S.edges.find(x=>(x.from.id===s.id&&!nIds.has(x.to.id))||(x.to.id===s.id&&!nIds.has(x.from.id))),t=e&&byId(e.from.id===s.id?e.to.id:e.from.id);
+if(!t){loose.push(s);continue;}
+const T=box(t),N=lay(s),w=N.w,h=N.h,used=new Set();
+for(const x of S.edges)if(x!==e)for(const end of [x.from,x.to])if(end.id===t.id)used.add(end.side+'|'+end.i);
+let best=null,bc=Infinity;
+for(const gp of [50,120])for(let side=0;side<4;side++)for(let i=0;i<3;i++){const P=port(t,lay(t),{side,i});
+for(let j=0;j<3;j++){const t=(j+1)/4;let x,y,q;
+if(side%2===0){x=P.x-w*t;y=side===0?T.y-gp-h:T.y+T.h+gp;q={x:P.x,y:side===0?y+h:y};}
+else{y=P.y-h*t;x=side===1?T.x+T.w+gp:T.x-gp-w;q={x:side===1?x:x+w,y:P.y};}
+const R={x,y,w,h};let c=gp+[0,15,40,15][side]+(i===1?0:8)+(j===1?0:6)+(used.has(side+'|'+i)?700:0);
+for(const o of obs){if(over(R,o,24))c+=1e5;else if(segIn(P,q,o,2))c+=1e4;}
+for(const [a,b] of segs){if(segIn(a,b,R,10))c+=900;if(cross(P,q,a,b))c+=300;}
+if(c<bc){bc=c;best={x,y,side,i,j};}}}
+s.x=Math.round(best.x);s.y=Math.round(best.y);const R=box(s);obs.push(R);
+const P=port(t,lay(t),best);segs.push([P,best.side%2===0?{x:P.x,y:best.side===0?R.y+R.h:R.y}:{x:best.side===1?R.x:R.x+R.w,y:P.y}]);
+const ns={id:s.id,side:(best.side+2)%4,i:best.j},ts={id:t.id,side:best.side,i:best.i};
+if(e.from.id===s.id){e.from=ns;e.to=ts;}else{e.from=ts;e.to=ns;}}
+if(loose.length){let y1=-Infinity,x0=Infinity;for(const o of obs){y1=Math.max(y1,o.y+o.h);x0=Math.min(x0,o.x);}if(!isFinite(y1)){y1=-GYL;x0=0;}
+let x=x0;for(const s of loose){s.x=Math.round(x);s.y=Math.round(y1+GYL);x+=lay(s).w+GXL;}}}
 
 /* spec: compact JSON form used by import */
 const KALIAS={class:'class',abstract:'abstract','abstract class':'abstract',interface:'interface',enum:'enum',enumeration:'enum'};
